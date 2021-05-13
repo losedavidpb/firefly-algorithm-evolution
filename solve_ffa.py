@@ -2,15 +2,17 @@
 # ---- All Copyright reserved (c) by David Parreño Barbuzano ----
 # ---------------------------------------------------------------
 
-from distance_functions import euclidean_distance, manhattan_distance
+import matplotlib.pyplot as plt
+import keyboard as keyboard
+import numpy as np
+
+from utils import euclidean_distance, michalewicz, sphere, de_yong, griewank
+from utils import yang, ackley, rastrigin, easom
 from firefly import Firefly
 from copy import deepcopy
 
-import matplotlib.pyplot as plt
-import math
-
 # Just for debugging ...
-debug_mode = True
+__debug_mode = True
 
 class FireflyAlgorithm(object):
 
@@ -56,7 +58,7 @@ class FireflyAlgorithm(object):
         self.mopt = kwargs.get('mopt', 'm')
         if self.mopt not in ['m', 'M']: self.mopt = 'm'
 
-        opt_functions = {'m': lambda oc, nc: oc > nc, 'M': lambda oc, nc: oc < nc}
+        opt_functions = {'m': lambda oc, nc: nc < oc, 'M': lambda oc, nc: nc > oc}
         self.optimize = opt_functions[self.mopt]
 
     def init_swarm(self):
@@ -64,21 +66,24 @@ class FireflyAlgorithm(object):
         swarm_population = []
 
         for i in range(self.n_fireflies):
-            firefly = Firefly(dim=self.dim, bounds=self.bounds, alpha=self.alpha, beta=self.beta,
-                              gamma=self.gamma, beta_min=self.beta_min, distance=self.distance, beta_0=self.beta_0)
-
-            firefly.fitness_value = self.f_function(p=firefly.position)
-            firefly.light = firefly.fitness_value
+            firefly = Firefly(
+                dim=self.dim, bounds=self.bounds, alpha=self.alpha,
+                gamma=self.gamma, beta_min=self.beta_min, distance=self.distance,
+                beta_0=self.beta_0, f_function=self.f_function
+            )
 
             swarm_population.append(firefly)
 
         return swarm_population
 
-    def reduce_alpha(self):
+    def reduce_alpha(self, swarm):
         """Reduce randomness coefficient. """
-        self.delta = 1 - (10**(-4) / 0.9) ** (1 / self.max_gen)
+        self.delta = 1 - (10 ** (-4) / 0.9) ** (1 / self.max_gen)
         self.alpha = (1 - self.delta) * self.alpha
         # self.alpha = self.alpha * self.delta
+
+        for i in range(len(swarm)):
+            swarm[i].alpha = self.alpha
 
     def solve(self):
         """Implements firefly algorithm for current problem.
@@ -88,84 +93,97 @@ class FireflyAlgorithm(object):
         values are best cost, best firefly, and history.
 
         """
-        history_fireflies = []
-        reverse_val = self.mopt == 'm'
+        reverse_val = self.mopt == 'M'
 
+        # Initial swarm of random fireflies
         swarm = self.init_swarm()
         swarm.sort(key=lambda f: f.light, reverse=reverse_val)
 
-        best_cost = self.f_function(p=swarm[0].position)
-        best_solution = deepcopy(swarm[0])
+        # Firefly with the best solution and historical movements
+        best_firefly, history_fireflies = deepcopy(swarm[0]), []
 
         if self.verbose is True:
             print(str.format(">> Evolution for FFA {} <<", self.name))
 
         for gen in range(self.max_gen):
-            history_fireflies.append(deepcopy(swarm))
-
             if self.verbose is True:
-                str_format = 'Generation {}: best_firefly={}, cost={}'
-                print(str.format(str_format, gen, best_solution, best_cost))
+                str_format = 'Generation {}: best_firefly={}'
+                print(str.format(str_format, gen + 1, best_firefly))
                 for firefly in swarm: print('\t *', firefly)
 
             for i in range(0, self.n_fireflies):
                 for j in range(0, self.n_fireflies):
-                    r = euclidean_distance(swarm[i].position, swarm[j].position)
-
-                    if swarm[i].light_intensity(r) <= swarm[j].light_intensity(r):
+                    # Light would be more attractive
+                    # depending on the optimization method
+                    if self.optimize(swarm[i].light, swarm[j].light):
                         swarm[i].move_towards(swarm[j])
-                        swarm[i].fitness_value = self.f_function(p=swarm[i].position)
 
-                swarm.sort(key=lambda f: f.fitness_value, reverse=reverse_val)
-                swarm[0].random_move()
+            swarm.sort(key=lambda f: f.light, reverse=reverse_val)
+            for k in range(len(swarm)): swarm[k].move_random(0.2)
 
-                if self.optimize(best_cost, swarm[0].fitness_value):
-                    swarm[0].fitness_value = self.f_function(p=swarm[0].position)
-                    best_cost, best_solution = swarm[0].fitness_value, deepcopy(swarm[0])
+            if self.optimize(swarm[0].light, best_firefly.light):
+                best_firefly = deepcopy(swarm[0])
 
-            self.reduce_alpha()
-            for i in range(len(swarm)): swarm[i].alpha = self.alpha
+            history_fireflies.append(deepcopy(swarm))
+            self.reduce_alpha(swarm)
 
-        return best_cost, best_solution, history_fireflies
+        return best_firefly, history_fireflies
 
 # -------------------------------------------------------------
 # --------- Test for simple Firefly Algorithm -----------------
 # -------------------------------------------------------------
 
+def __get_position(h, num_dim):
+    return [h[k].position[num_dim] for k in range(len(h))]
+
+def __show_plot(bounds, x, y, ngen, color):
+    plt.contourf(X, Y, Z)
+    cp = plt.contour(X, Y, Z, origin='lower', extend='both', linewidths=2)
+
+    plt.title('Evolution of Firefly Algorithm', loc='left')
+    plt.title('Generation ' + str(ngen), loc='right')
+    plt.grid()
+
+    plt.xticks([i for i in range(bounds[0], bounds[1])])
+    plt.yticks([i for i in range(bounds[0], bounds[1])])
+
+    plt.colorbar(cp, shrink=0.8, orientation='vertical')
+    plt.plot(x, y, color + '.'), plt.axis([min(bounds), max(bounds), min(bounds), max(bounds)])
+    plt.draw(), plt.pause(0.1), plt.clf(), plt.show()
+
+def __prepare_to_show_plot(history, bounds, ngen):
+    x = __get_position(history[ngen], 0)
+    y = __get_position(history[ngen], 1)
+
+    __show_plot(bounds, x, y, ngen + 1, 'r')
+    __show_plot(bounds, x, y, ngen + 1, 'b')
+    __show_plot(bounds, x, y, ngen + 1, 'r')
+
+def __draw_plot(history, bounds):
+    plt.ion()
+
+    for i in range(len(history)):
+        __prepare_to_show_plot(history, bounds, i)
+
 if __name__ == '__main__':
-    if debug_mode:
-        def draw_plot(bounds, history):
-            def get_position(h, num_dim):
-                return [h[k].position[num_dim] for k in range(len(h))]
-
-            def show_current_plot(color):
-                plt.title('Evolution of Firefly Algorithm')
-                plt.suptitle('Generation ' + str(i)), plt.grid()
-                plt.plot(x, y, color + '.')
-                plt.axis([bounds[0], bounds[1], bounds[0], bounds[1]])
-                plt.draw(), plt.pause(0.1), plt.clf(), plt.show()
-
-            plt.ion()
-
-            for i in range(len(history)):
-                x = get_position(history[i], 0)
-                y = get_position(history[i], 1)
-
-                show_current_plot('r')
-                show_current_plot('b')
-                show_current_plot('r')
-
-        def ffa_function(p):
-            x, y = p[0], p[1]
-            expr = math.exp(-(x - 4) ** 2 - (y - 4) ** 2) + math.exp(-(x + 4) ** 2 - (y - 4) ** 2)
-            expr += 2 * math.exp(-x ** 2 - (y + 4) ** 2) + 2 * math.exp(-x ** 2 - y ** 2)
-            return expr
-
+    if __debug_mode:
         ffa = FireflyAlgorithm(
-            name='ffa', bounds=[-5, 5], n_fireflies=40,
-            verbose=True, max_gen=50, f_function=ffa_function,
-            mopt='m', distance=manhattan_distance,
+            name='ffa', dim=2, bounds=[-4, 4, -4, 4], n_fireflies=40,
+            verbose=True, max_gen=10, f_function=sphere,
+            mopt='m', distance=euclidean_distance,
         )
 
-        _, _, history1 = ffa.solve()
-        draw_plot(ffa.bounds, history1)
+        _best_firefly, ffa1_hist = ffa.solve()
+        print(str.format('BEST FIREFLY: {}', _best_firefly))
+
+        # Preparing data for contour ...
+        _x = np.linspace(ffa.bounds[0], ffa.bounds[1], 400)
+        _y = np.linspace(ffa.bounds[0], ffa.bounds[1], 400)
+        X, Y = np.meshgrid(_x, _y)
+        Z = np.apply_along_axis(sphere, 0, [X, Y])
+
+        __draw_plot(ffa1_hist, ffa.bounds)
+
+        # Show last generation until program has finished
+        while not keyboard.is_pressed("q"):
+            __prepare_to_show_plot(ffa1_hist, ffa.bounds, len(ffa1_hist) - 1)
