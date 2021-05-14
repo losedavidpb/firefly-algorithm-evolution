@@ -12,7 +12,7 @@ def euclidean_distance(pos_1, pos_2):
 def manhattan_distance(pos_1, pos_2):
     """Returns manhattan distance between two positions. """
     result = [(x1 - x2) for x1, x2 in zip(pos_1, pos_2)]
-    return sum(result)
+    return np.sum(result)
 
 def michalewicz(p):
     """Returns Michalewicz's function evaluation. """
@@ -42,7 +42,6 @@ def de_yong(p):
             1 / (i + (p[0] - a[0, i])**6 + (p[1] - a[1, i])**6)
             for i in range(len(p))
         ])
-
         return (0.002 + aux)**-1
     else:
         print("error de_yong: 'p' must be a 2-D vector")

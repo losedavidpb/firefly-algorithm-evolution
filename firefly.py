@@ -29,15 +29,14 @@ class Firefly(object):
         self.dim = kwargs.get('dim', 2)
         self.mopt = kwargs.get('dim', 'm')
 
-        self.bounds = np.asmatrix(kwargs.get('bounds', [[0, 4], [0, 4]]))
-        self.bounds = self.bounds.reshape(self.dim, 2)
+        self.bounds = np.asarray(kwargs.get('bounds', [0, 4]))
         self.position = kwargs.get('position', None)
 
         if self.position is None:
             self.position = np.zeros(shape=(1, self.dim)).flatten()
 
             for i in range(self.position.size):
-                low, high = self.bounds[i, 0], self.bounds[i, 1]
+                low, high = self.bounds[0], self.bounds[1]
                 self.position[i] = np.random.uniform(low, high)
 
         self.distance = kwargs.get('distance', euclidean_distance)
@@ -72,11 +71,11 @@ class Firefly(object):
     def put_on_range(self):
         """Set firefly's position between current bounds. """
         for pos in range(self.position.size):
-            if self.position[pos] <= self.bounds[pos, 0]:
-                self.position[pos] = self.bounds[pos, 0]
+            if self.position[pos] <= self.bounds[0]:
+                self.position[pos] = self.bounds[0]
 
-            if self.position[pos] >= self.bounds[pos, 1]:
-                self.position[pos] = self.bounds[pos, 1]
+            if self.position[pos] >= self.bounds[1]:
+                self.position[pos] = self.bounds[1]
 
     def move_towards(self, better):
         """Move firefly to passed one considering distance and randomness. """
